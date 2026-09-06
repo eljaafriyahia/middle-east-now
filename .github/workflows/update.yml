@@ -12,6 +12,11 @@ on:
 
 permissions:
   contents: read
+  actions: write
+
+concurrency:
+  group: men-update
+  cancel-in-progress: false
 
 jobs:
   news:
@@ -56,3 +61,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python prune.py
+
+      - name: بدء دورة التحديث التالية تلقائيًا
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run MEN-Update --repo "${{ github.repository }}"
