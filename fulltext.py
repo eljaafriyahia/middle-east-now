@@ -1,14 +1,13 @@
-import html as html_lib
 import json
 import os
 import random
-import re
 import sys
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import db
+import clean
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT, "data")
@@ -18,7 +17,6 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"
-AR = re.compile(r"[\u0600-\u06FF]")
 
 
 def fetch(url, timeout=25):
@@ -32,21 +30,7 @@ def fetch(url, timeout=25):
 
 
 def extract_paragraphs(html_text):
-    raw = re.findall(r"<p[^>]*>(.*?)</p>", html_text, re.S)
-    out = []
-    for t in raw:
-        t = html_lib.unescape(re.sub(r"<[^>]+>", "", t))
-        t = re.sub(r"\s+", " ", t).strip()
-        n_ar = len(AR.findall(t))
-        if 80 <= len(t) <= 900 and n_ar >= 30:
-            out.append(t)
-    seen = set()
-    dedup = []
-    for p in out:
-        if p not in seen:
-            seen.add(p)
-            dedup.append(p)
-    return dedup[:40]
+    return clean.extract_clean_paragraphs(html_text)
 
 
 def article_text(link):
@@ -73,6 +57,7 @@ def row_of(art):
 def main():
     argv = sys.argv[1:]
     limit = int(argv[0]) if argv and argv[0].isdigit() else None
+    force = "force" in argv
 
     if not os.path.exists(NEWS_JSON):
         print("لا توجد بيانات؛ شغّل المحرك أولاً.")
@@ -85,11 +70,18 @@ def main():
     cloud = db.existing(guids, "guid,detail")
     pending = []
     reused = 0
+    cleaned = 0
     for art in news["articles"]:
         gid = art["guid"]
         if gid in cloud and cloud[gid].get("detail"):
-            art["detail"] = cloud[gid]["detail"]
-            reused += 1
+            if force:
+                pending.append(art)
+            else:
+                old = art.get("detail")
+                art["detail"] = clean.clean_text(cloud[gid]["detail"])
+                if art["detail"] != old:
+                    cleaned += 1
+                reused += 1
             continue
         if art.get("detail"):
             continue
@@ -100,6 +92,8 @@ def main():
 
     if not pending:
         print(f"كل المقالات نصها الكامل جاهز (استُعيدت {reused} من Supabase).")
+        if cleaned:
+            print(f"نُظّفت نصوص مخزنة سابقًا: {cleaned}")
         return
 
     def job(art):
@@ -137,7 +131,7 @@ def main():
 
     ready = len([a for a in news["articles"] if a.get("detail")])
     print(f"جُلب النص الكامل الآن: {done}   (تعذّر/أُغلق: {failed})   مُستعاد من السحابة: {reused}")
-    print(f"إجمالي بنص كامل جاهز للصياغة: {ready}/{len(news['articles'])}")
+    print(f"إجمالي بنص كامل جاهز للعرض: {ready}/{len(news['articles'])}")
 
 
 if __name__ == "__main__":

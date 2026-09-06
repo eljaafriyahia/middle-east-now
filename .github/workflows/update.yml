@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
+    inputs:
+      recrawl:
+        description: 'إعادة سحب النصوص الكاملة من الصفحات (طويلة)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +37,19 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python fulltext.py
+
+      - name: إعادة سحب كل النصوص من الصفحات (بناء على الطلب فقط)
+        if: inputs.recrawl
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python fulltext.py force
+
+      - name: تنظيف النصوص المخزنة من الضوضاء
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python clean_step.py
 
       - name: حذف الأخبار الأقدم من 3 أيام
         env:
