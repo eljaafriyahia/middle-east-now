@@ -36,68 +36,77 @@ class PreferencesSetupDialog : AppCompatDialogFragment() {
     }
 
     private fun buildStepDialog(): AlertDialog {
-        val inflater = LayoutInflater.from(requireContext())
-        val scrollView = ScrollView(requireContext())
-        val container = LinearLayout(requireContext()).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 16, 32, 16)
-        }
-        scrollView.addView(container)
+        try {
+            val inflater = LayoutInflater.from(requireContext())
+            val scrollView = ScrollView(requireContext())
+            val container = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 16, 32, 16)
+            }
+            scrollView.addView(container)
 
-        if (step == 0) {
-            val categories = getAvailableCategories()
-            categoryCheckBoxes.clear()
-            categories.forEach { cat ->
-                val cb = CheckBox(requireContext()).apply {
-                    text = cat
-                    isChecked = true
-                    setOnClickListener { if (isChecked) selectedCategories.add(cat) else selectedCategories.remove(cat) }
+            if (step == 0) {
+                val categories = getAvailableCategories()
+                categoryCheckBoxes.clear()
+                categories.forEach { cat ->
+                    val cb = CheckBox(requireContext()).apply {
+                        text = cat
+                        isChecked = true
+                        setOnClickListener { if (isChecked) selectedCategories.add(cat) else selectedCategories.remove(cat) }
+                    }
+                    categoryCheckBoxes.add(cb)
+                    container.addView(cb)
                 }
-                categoryCheckBoxes.add(cb)
-                container.addView(cb)
-            }
-        } else {
-            val sources = getAvailableSources()
-            sourceCheckBoxes.clear()
-            sources.forEach { src ->
-                val cb = CheckBox(requireContext()).apply {
-                    text = src
-                    isChecked = true
-                    setOnClickListener { if (isChecked) selectedSources.add(src) else selectedSources.remove(src) }
+            } else {
+                val sources = getAvailableSources()
+                sourceCheckBoxes.clear()
+                sources.forEach { src ->
+                    val cb = CheckBox(requireContext()).apply {
+                        text = src
+                        isChecked = true
+                        setOnClickListener { if (isChecked) selectedSources.add(src) else selectedSources.remove(src) }
+                    }
+                    sourceCheckBoxes.add(cb)
+                    container.addView(cb)
                 }
-                sourceCheckBoxes.add(cb)
-                container.addView(cb)
             }
-        }
 
-        val builder = AlertDialog.Builder(requireContext())
-            .setTitle(if (step == 0) "اختر الأقسام التي تريد متابعتها" else "اختر المصادر التي تريد متابعتها")
-            .setView(scrollView)
-            .setCancelable(false)
-            .setPositiveButton(if (step == 0) "التالي" else "حفظ") { _, _ ->
-                if (step == 0) {
-                    step = 1
-                    show(requireActivity().supportFragmentManager, "prefs_setup")
-                } else {
-                    listener?.onComplete(selectedCategories, selectedSources)
+            return AlertDialog.Builder(requireContext())
+                .setTitle(if (step == 0) "اختر الأقسام التي تريد متابعتها" else "اختر المصادر التي تريد متابعتها")
+                .setView(scrollView)
+                .setCancelable(false)
+                .setPositiveButton(if (step == 0) "التالي" else "حفظ") { _, _ ->
+                    if (step == 0) {
+                        step = 1
+                        show(parentFragmentManager, "prefs_setup")
+                    } else {
+                        listener?.onComplete(selectedCategories, selectedSources)
+                    }
                 }
-            }
-            .setNegativeButton("الكل") { _, _ ->
-                if (step == 0) {
-                    selectedCategories = getAvailableCategories().toMutableSet()
-                    categoryCheckBoxes.forEach { it.isChecked = true }
-                } else {
-                    selectedSources = getAvailableSources().toMutableSet()
-                    sourceCheckBoxes.forEach { it.isChecked = true }
+                .setNegativeButton("الكل") { _, _ ->
+                    if (step == 0) {
+                        selectedCategories = getAvailableCategories().toMutableSet()
+                        categoryCheckBoxes.forEach { it.isChecked = true }
+                    } else {
+                        selectedSources = getAvailableSources().toMutableSet()
+                        sourceCheckBoxes.forEach { it.isChecked = true }
+                    }
+                    if (step == 0) {
+                        step = 1
+                        show(parentFragmentManager, "prefs_setup")
+                    } else {
+                        listener?.onComplete(selectedCategories, selectedSources)
+                    }
                 }
-                if (step == 0) {
-                    step = 1
-                    show(requireActivity().supportFragmentManager, "prefs_setup")
-                } else {
-                    listener?.onComplete(selectedCategories, selectedSources)
-                }
-            }
-        return builder.create()
+                .create()
+        } catch (e: Exception) {
+            // Fallback simple dialog
+            return AlertDialog.Builder(requireContext())
+                .setTitle("خطأ")
+                .setMessage("تعذر عرض الإعدادات")
+                .setPositiveButton("موافق") { _, _ -> listener?.onComplete(emptySet(), emptySet()) }
+                .create()
+        }
     }
 
     private fun getAvailableCategories(): List<String> {
@@ -111,8 +120,7 @@ class PreferencesSetupDialog : AppCompatDialogFragment() {
         return listOf(
             "BBC Arabic", "Al Jazeera", "Al Arabiya", "Sky News Arabia",
             "RT Arabic", "CNN Arabic", "DW Arabic", "France 24 Arabic",
-            "Anadolu Agency", "Middle East Monitor", "The New Arab",
-            "Asharq Al-Awsat", "Al Quds Al Arabi", "Al Masry Al Youm",
+            "Anadolu Agency", "Asharq Al-Awsat", "Al Quds Al Arabi", "Al Masry Al Youm",
             "Youm7", "Sada Elbalad", "El Watan News", "Masrawy"
         )
     }

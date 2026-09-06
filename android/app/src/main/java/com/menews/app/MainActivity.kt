@@ -25,11 +25,13 @@ class MainActivity : AppCompatActivity(), PreferencesSetupDialog.OnSetupComplete
 
     private val TAG = "MainActivity"
     private var web: WebView? = null
+    private var initializationDone = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Initialize WebView as early as possible
         val webView = WebView(this)
         web = webView
         
@@ -38,73 +40,127 @@ class MainActivity : AppCompatActivity(), PreferencesSetupDialog.OnSetupComplete
         webView.settings.loadWithOverviewMode = true
         webView.settings.useWideViewPort = true
         webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        webView.settings.allowFileAccess = true
+        webView.settings.allowContentAccess = true
         
         webView.addJavascriptInterface(CloudBridge(this), "MENC")
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
                 Log.e(TAG, "WebView error: ${error.description}")
             }
+            
+            override fun onPageFinished(view: WebView, url: String) {
+                super.onPageFinished(view, url)
+                if (!initializationDone) {
+                    initializationDone = true
+                    initializeBackgroundServices()
+                }
+            }
         }
         
         setContentView(webView)
         
-        // Load asset with error handling
+        // Try to load asset with multiple fallbacks
+        loadAssetWithFallback(webView)
+    }
+
+    private fun loadAssetWithFallback(webView: WebView) {
         try {
             webView.loadUrl("file:///android_asset/index.html")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to load asset", e)
-        }
-        
-        // Delay heavy operations to avoid crash on startup
-        Handler(Looper.getMainLooper()).postDelayed({
+            Log.e(TAG, "Asset load failed, trying alternative", e)
+            // Fallback: try with different scheme
             try {
-                scheduleBackgroundCheck()
-            } catch (e: Exception) {
-                Log.e(TAG, "WorkManager error", e)
+                webView.loadUrl("file:///android_asset/index.html")
+            } catch (e2: Exception) {
+                Log.e(TAG, "All asset loads failed", e2)
+                showErrorInWebView("تعذر تحميل التطبيق. تأكد من تثبيت APK بشكل صحيح.")
             }
-            requestNotificationPermission()
-            
-            // Delay dialog to ensure activity is ready
+        }
+    }
+
+    private fun showErrorInWebView(message: String) {
+        runOnUiThread {
+            web?.loadDataWithBaseURL(
+                null,
+                """
+                <!DOCTYPE html>
+                <html dir="rtl" lang="ar">
+                <head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {font-family: sans-serif; padding: 20px; text-align: center; background: #0f172a; color: #e2e8f0;}
+                        .error {background: #7f1d1d; border: 1px solid #ef4444; border-radius: 12px; padding: 20px; margin: 20px;}
+                        button {background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; margin-top: 16px;}
+                    </style>
+                </head>
+                <body>
+                    <div class="error">
+                        <h2>⚠️ خطأ في التحميل</h2>
+                        <p>$message</p>
+                        <button onclick="location.reload()">إعادة المحاولة</button>
+                    </div>
+                </body>
+                </html>
+                """.trimIndent(),
+                "text/html",
+                "utf-8",
+                null
+            )
+        }
+    }
+
+    private fun initializeBackgroundServices() {
+        Handler(Looper.getMainLooper()).postDelayed({
+            safeExecute("WorkManager") { scheduleBackgroundCheck() }
+            safeExecute("NotificationPermission") { requestNotificationPermission() }
+            // Delay dialog more to ensure UI is ready
             Handler(Looper.getMainLooper()).postDelayed({
-                checkFirstLaunch()
-            }, 500)
-        }, 100)
+                safeExecute("FirstLaunchDialog") { checkFirstLaunch() }
+            }, 1000)
+        }, 300)
+    }
+
+    private inline fun safeExecute(tag: String, crossinline action: () -> Unit) {
+        try {
+            action()
+        } catch (e: Exception) {
+            Log.e(TAG, "$tag error", e)
+        }
     }
 
     private fun checkFirstLaunch() {
-        try {
+        safeExecute("checkFirstLaunch") {
             if (!PreferencesHelper.isSetupCompleted(this)) {
-                PreferencesSetupDialog().show(supportFragmentManager, "prefs_setup")
+                // Extra safety: ensure fragment manager is ready
+                if (!isFinishing && !isDestroyed) {
+                    PreferencesSetupDialog().show(supportFragmentManager, "prefs_setup")
+                }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Dialog error", e)
         }
     }
 
     override fun onComplete(categories: Set<String>, sources: Set<String>) {
-        try {
+        safeExecute("onComplete") {
             PreferencesHelper.setSelectedCategories(this, categories)
             PreferencesHelper.setSelectedSources(this, sources)
             PreferencesHelper.setSetupCompleted(this, true)
             scheduleBackgroundCheck()
-        } catch (e: Exception) {
-            Log.e(TAG, "onComplete error", e)
         }
     }
 
     private fun scheduleBackgroundCheck() {
-        try {
+        safeExecute("scheduleBackgroundCheck") {
             val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
                 "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
             )
-        } catch (e: Exception) {
-            Log.e(TAG, "scheduleBackgroundCheck error", e)
         }
     }
 
     private fun requestNotificationPermission() {
-        try {
+        safeExecute("requestNotificationPermission") {
             if (Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {
@@ -112,17 +168,15 @@ class MainActivity : AppCompatActivity(), PreferencesSetupDialog.OnSetupComplete
                     this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2001
                 )
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Permission error", e)
         }
     }
 
     internal fun openPreferencesDialog() {
-        try {
-            val dialog = PreferencesSetupDialog()
-            dialog.show(supportFragmentManager, "prefs_edit")
-        } catch (e: Exception) {
-            Log.e(TAG, "openPreferencesDialog error", e)
+        safeExecute("openPreferencesDialog") {
+            if (!isFinishing && !isDestroyed) {
+                val dialog = PreferencesSetupDialog()
+                dialog.show(supportFragmentManager, "prefs_edit")
+            }
         }
     }
 
@@ -159,12 +213,12 @@ class CloudBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun getPreferences(): String {
-        try {
+        return try {
             val cats = PreferencesHelper.getSelectedCategories(activity)
             val srcs = PreferencesHelper.getSelectedSources(activity)
             val allCats = getAvailableCategories()
             val allSrcs = getAvailableSources()
-            return Gson().toJson(mapOf(
+            Gson().toJson(mapOf(
                 "selectedCategories" to cats,
                 "selectedSources" to srcs,
                 "allCategories" to allCats,
@@ -172,7 +226,7 @@ class CloudBridge(private val activity: MainActivity) {
             ))
         } catch (e: Exception) {
             Log.e("CloudBridge", "getPreferences error", e)
-            return "{}"
+            "{}"
         }
     }
 
