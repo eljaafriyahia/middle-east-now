@@ -197,27 +197,25 @@ const render = () => {
 
 const buildFilters = data => {
   // Build unique categories from articles
-  const categories = [...new Set(data.articles.map(a => a.category).filter(Boolean))].sort();
+  const categories = [...new Set(data.articles.map(a => (a.category || '').trim()).filter(Boolean))].sort();
   const catSel = document.getElementById('cat');
-  catSel.innerHTML = '<option value="">كل الأقسام</option>';
+  // Clear completely and rebuild
+  catSel.options.length = 1; // Keep only first option (كل الأقسام)
   categories.forEach(c => {
     const o = document.createElement('option');
     o.value = c; o.textContent = c;
     catSel.appendChild(o);
   });
-  catSel.onchange = e => { activeCat = e.target.value; render(); };
 
   // Build sources dropdown
   const srcSel = document.getElementById('src');
-  srcSel.innerHTML = '<option value="">كل المصادر</option>';
-  // Unique sources from articles
+  srcSel.options.length = 1; // Keep only first option (كل المصادر)
   const sources = [...new Map(data.articles.map(a => [a.source_id, {id: a.source_id, name: a.source_name, cat: a.source_cat}])).values()];
   sources.forEach(s => {
     const o = document.createElement('option');
     o.value = s.id; o.textContent = s.name + (s.cat ? ' (' + s.cat + ')' : '');
     srcSel.appendChild(o);
   });
-  srcSel.onchange = e => { activeSrc = e.target.value; render(); };
 };
 
 const fmtUpd = ts => {
@@ -298,6 +296,7 @@ loadCloud().then(cloudOk => {
 
 document.getElementById('q').addEventListener('input', render);
 document.getElementById('src').addEventListener('change', e => { activeSrc = e.target.value; render(); });
+document.getElementById('cat').addEventListener('change', e => { activeCat = e.target.value; render(); });
 
 const openArticle = link => {
   const a = articles.find(x => x.link === link);
