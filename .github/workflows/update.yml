@@ -27,6 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
       - name: تنصيب المكتبات
         run: pip install feedparser
@@ -41,7 +42,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python fulltext.py
+        run: python fulltext.py 4
 
       - name: إعادة سحب كل النصوص من الصفحات (بناء على الطلب فقط)
         if: inputs.recrawl
