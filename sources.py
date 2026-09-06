@@ -143,20 +143,4 @@ SOURCES = [
         "url": "https://www.aa.com.tr/ar/rss",
         "category": "وكالة رسمية",
     },
-    {
-        "id": "memon",
-        "name": "مرصد الشرق الأوسط (ميمونيتور)",
-        "name_en": "Middle East Monitor",
-        "type": "rss",
-        "url": "https://www.middleeastmonitor.com/feed/",
-        "category": "دولية",
-    },
-    {
-        "id": "alaraby",
-        "name": "العربي الجديد",
-        "name_en": "The New Arab",
-        "type": "rss",
-        "url": "https://www.alaraby.co.uk/rss",
-        "category": "دولية",
-    },
 ]
