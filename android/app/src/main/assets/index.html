@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>الشرق الأوسط الآن</title>
 <meta name="description" content="مجمع أخبار الشرق الأوسط - آخر الأخبار من وكالات الأنباء الرسمية والمواقع الدولية">
-<link rel="manifest" href="manifest.webmanifest">
+
 <meta name="theme-color" content="#0f172a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>">
 <style>
@@ -199,8 +199,8 @@ const buildFilters = data => {
   // Build unique categories from articles
   const categories = [...new Set(data.articles.map(a => (a.category || '').trim()).filter(Boolean))].sort();
   const catSel = document.getElementById('cat');
-  // Clear completely and rebuild
-  catSel.options.length = 1; // Keep only first option (كل الأقسام)
+  // Clear completely using innerHTML (more reliable in WebView)
+  catSel.innerHTML = '<option value="">كل الأقسام</option>';
   categories.forEach(c => {
     const o = document.createElement('option');
     o.value = c; o.textContent = c;
@@ -209,7 +209,7 @@ const buildFilters = data => {
 
   // Build sources dropdown
   const srcSel = document.getElementById('src');
-  srcSel.options.length = 1; // Keep only first option (كل المصادر)
+  srcSel.innerHTML = '<option value="">كل المصادر</option>';
   const sources = [...new Map(data.articles.map(a => [a.source_id, {id: a.source_id, name: a.source_name, cat: a.source_cat}])).values()];
   sources.forEach(s => {
     const o = document.createElement('option');

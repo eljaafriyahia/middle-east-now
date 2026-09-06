@@ -8,7 +8,8 @@
         android:label="الشرق الأوسط الآن"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
-        android:allowBackup="true">
+        android:allowBackup="true"
+        android:debuggable="false">
 
         <activity
             android:name=".MainActivity"
