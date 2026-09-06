@@ -121,8 +121,9 @@ class CloudBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun savePreferences(categoriesJson: String, sourcesJson: String): Boolean {
         return try {
-            val cats = Gson().fromJson(categoriesJson, object : TypeToken<Set<String>>() {}.type)
-            val srcs = Gson().fromJson(sourcesJson, object : TypeToken<Set<String>>() {}.type)
+            val type = com.google.gson.reflect.TypeToken.getParameterized(Set::class.java, String::class.java)
+            val cats = Gson().fromJson(categoriesJson, type)
+            val srcs = Gson().fromJson(sourcesJson, type)
             PreferencesHelper.setSelectedCategories(activity, cats)
             PreferencesHelper.setSelectedSources(activity, srcs)
             // Reschedule background check with new preferences
