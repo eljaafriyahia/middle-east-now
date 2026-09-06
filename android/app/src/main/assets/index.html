@@ -29,12 +29,7 @@
     flex:1; min-width:200px; padding:10px 14px; border-radius:10px; border:1px solid var(--line);
     background:var(--card); color:var(--txt); font-size:14px
   }
-  .chips{display:flex; gap:8px; flex-wrap:wrap}
-  .chip{
-    padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--card);
-    color:var(--mut); font-size:13px; cursor:pointer; user-select:none
-  }
-  .chip.active{background:var(--acc); color:#06283d; border-color:var(--acc); font-weight:700}
+  
   select{
     padding:9px 12px; border-radius:10px; border:1px solid var(--line);
     background:var(--card); color:var(--txt); font-size:13px
@@ -114,14 +109,15 @@
     <div class="updated" id="updated">جارٍ التحديث...</div>
     <span class="timer" id="timer"></span>
     <button class="reload" id="reloadBtn">تحديث الآن ↻</button>
+    <button class="reload" id="prefsBtn" style="background:rgba(56,189,248,.15);color:var(--acc)">⚙ تفضيلات</button>
   </div>
 </header>
 <main>
   <div class="bar">
     <input type="search" id="q" placeholder="ابحث في الأخبار...">
+    <select id="cat"><option value="">كل الأقسام</option></select>
     <select id="src"><option value="">كل المصادر</option></select>
   </div>
-  <div class="chips" id="chips"></div>
   <div id="list" style="margin-top:14px">
     <div class="loading">جارٍ تحميل الأخبار...</div>
   </div>
@@ -169,25 +165,15 @@ const rel = ts => {
 
 const esc = s => (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-const chips = [
-  {id:'الكل', label:'الكل'},
-  {id:'سياسة', label:'سياسة'},
-  {id:'اقتصاد', label:'اقتصاد'},
-  {id:'أمن', label:'أمن'},
-  {id:'رياضة', label:'رياضة'},
-  {id:'تكنولوجيا', label:'تكنولوجيا'},
-  {id:'صحة', label:'صحة'},
-  {id:'أخبار', label:'أخبار عامة'},
-  {id:'وكالة رسمية', label:'وكالات رسمية'},
-  {id:'دولية', label:'دولية'},
-];
+let activeCat = '';
+let activeSrc = '';
 
 const render = () => {
   const q = document.getElementById('q').value.trim();
   const list = document.getElementById('list');
   const empty = document.getElementById('empty');
   let out = articles.filter(a => {
-    if (activeCat !== 'الكل' && a.source_cat !== activeCat && a.category !== activeCat && !(activeCat === 'وكالة رسمية' && a.source_cat === 'وكالة رسمية') && !(activeCat === 'دولية' && a.source_cat === 'دولية')) return false;
+    if (activeCat && a.category !== activeCat && a.source_cat !== activeCat) return false;
     if (activeSrc && a.source_id !== activeSrc) return false;
     if (q && !(a.title + ' ' + (a.summary||'')).includes(q)) return false;
     return true;
@@ -210,20 +196,28 @@ const render = () => {
 };
 
 const buildFilters = data => {
-  const sel = document.getElementById('src');
-  data.sources.forEach(s => {
+  // Build unique categories from articles
+  const categories = [...new Set(data.articles.map(a => a.category).filter(Boolean))].sort();
+  const catSel = document.getElementById('cat');
+  catSel.innerHTML = '<option value="">كل الأقسام</option>';
+  categories.forEach(c => {
     const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.name + ' (' + s.name_en + ')';
-    sel.appendChild(o);
+    o.value = c; o.textContent = c;
+    catSel.appendChild(o);
   });
-  const chipsEl = document.getElementById('chips');
-  chips.forEach(c => {
-    const b = document.createElement('button');
-    b.className = 'chip' + (c.id === activeCat ? ' active' : '');
-    b.textContent = c.label;
-    b.onclick = () => { activeCat = c.id; render(); document.querySelectorAll('.chip').forEach(x => x.classList.remove('active')); b.classList.add('active'); };
-    chipsEl.appendChild(b);
+  catSel.onchange = e => { activeCat = e.target.value; render(); };
+
+  // Build sources dropdown
+  const srcSel = document.getElementById('src');
+  srcSel.innerHTML = '<option value="">كل المصادر</option>';
+  // Unique sources from articles
+  const sources = [...new Map(data.articles.map(a => [a.source_id, {id: a.source_id, name: a.source_name, cat: a.source_cat}])).values()];
+  sources.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.name + (s.cat ? ' (' + s.cat + ')' : '');
+    srcSel.appendChild(o);
   });
+  srcSel.onchange = e => { activeSrc = e.target.value; render(); };
 };
 
 const fmtUpd = ts => {

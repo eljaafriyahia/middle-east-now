@@ -3,7 +3,6 @@ package com.menews.app
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Context
-import android.content.DialogInterface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -22,6 +21,8 @@ class PreferencesSetupDialog : AppCompatDialogFragment() {
     private var selectedCategories = mutableSetOf<String>()
     private var selectedSources = mutableSetOf<String>()
     private var step = 0 // 0 = categories, 1 = sources
+    private var categoryCheckBoxes = mutableListOf<CheckBox>()
+    private var sourceCheckBoxes = mutableListOf<CheckBox>()
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -34,7 +35,7 @@ class PreferencesSetupDialog : AppCompatDialogFragment() {
         return buildStepDialog()
     }
 
-    private fun buildStepDialog(): AlertDialog.Builder {
+    private fun buildStepDialog(): AlertDialog {
         val inflater = LayoutInflater.from(requireContext())
         val scrollView = ScrollView(requireContext())
         val container = LinearLayout(requireContext()).apply {
@@ -43,67 +44,60 @@ class PreferencesSetupDialog : AppCompatDialogFragment() {
         }
         scrollView.addView(container)
 
-        val (title, items, checkedItems, onItemClick) = when (step) {
-            0 -> {
-                val categories = getAvailableCategories()
-                val checks = categories.map { cat ->
-                    CheckBox(requireContext()).apply {
-                        text = cat
-                        isChecked = true // Default all selected
-                        setOnClickListener { selectedCategories.add(cat) }
-                    }
+        if (step == 0) {
+            val categories = getAvailableCategories()
+            categoryCheckBoxes.clear()
+            categories.forEach { cat ->
+                val cb = CheckBox(requireContext()).apply {
+                    text = cat
+                    isChecked = true
+                    setOnClickListener { if (isChecked) selectedCategories.add(cat) else selectedCategories.remove(cat) }
                 }
-                checks.forEach { container.addView(it) }
-                "اختر الأقسام التي تريد متابعتها" to categories to
-                    checks.map { it.isChecked }.toMutableList() to
-                    { idx: Int -> checks[idx].isChecked = !checks[idx].isChecked; selectedCategories.add(categories[idx]) }
+                categoryCheckBoxes.add(cb)
+                container.addView(cb)
             }
-            1 -> {
-                val sources = getAvailableSources()
-                val checks = sources.map { src ->
-                    CheckBox(requireContext()).apply {
-                        text = src
-                        isChecked = true
-                        setOnClickListener { selectedSources.add(src) }
-                    }
+        } else {
+            val sources = getAvailableSources()
+            sourceCheckBoxes.clear()
+            sources.forEach { src ->
+                val cb = CheckBox(requireContext()).apply {
+                    text = src
+                    isChecked = true
+                    setOnClickListener { if (isChecked) selectedSources.add(src) else selectedSources.remove(src) }
                 }
-                checks.forEach { container.addView(it) }
-                "اختر المصادر التي تريد متابعتها" to sources to
-                    checks.map { it.isChecked }.toMutableList() to
-                    { idx: Int -> checks[idx].isChecked = !checks[idx].isChecked; selectedSources.add(sources[idx]) }
+                sourceCheckBoxes.add(cb)
+                container.addView(cb)
             }
-            else -> throw IllegalStateException()
         }
 
-        return AlertDialog.Builder(requireContext())
-            .setTitle(title)
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle(if (step == 0) "اختر الأقسام التي تريد متابعتها" else "اختر المصادر التي تريد متابعتها")
             .setView(scrollView)
             .setCancelable(false)
             .setPositiveButton(if (step == 0) "التالي" else "حفظ") { _, _ ->
                 if (step == 0) {
                     step = 1
-                    // Re-show dialog for sources
-                    (dialog as? AlertDialog)?.dismiss()
                     show(requireActivity().supportFragmentManager, "prefs_setup")
                 } else {
                     listener?.onComplete(selectedCategories, selectedSources)
                 }
             }
             .setNegativeButton("الكل") { _, _ ->
-                // Select all
                 if (step == 0) {
                     selectedCategories = getAvailableCategories().toMutableSet()
+                    categoryCheckBoxes.forEach { it.isChecked = true }
                 } else {
                     selectedSources = getAvailableSources().toMutableSet()
+                    sourceCheckBoxes.forEach { it.isChecked = true }
                 }
                 if (step == 0) {
                     step = 1
-                    (dialog as? AlertDialog)?.dismiss()
                     show(requireActivity().supportFragmentManager, "prefs_setup")
                 } else {
                     listener?.onComplete(selectedCategories, selectedSources)
                 }
             }
+        return builder.create()
     }
 
     private fun getAvailableCategories(): List<String> {

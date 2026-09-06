@@ -8,7 +8,7 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -19,7 +19,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
-class MainActivity : Activity(), PreferencesSetupDialog.OnSetupComplete {
+class MainActivity : AppCompatActivity(), PreferencesSetupDialog.OnSetupComplete {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +69,7 @@ class MainActivity : Activity(), PreferencesSetupDialog.OnSetupComplete {
         }
     }
 
-    private fun openPreferencesDialog() {
+    internal fun openPreferencesDialog() {
         val dialog = PreferencesSetupDialog()
         dialog.show(supportFragmentManager, "prefs_edit")
     }
