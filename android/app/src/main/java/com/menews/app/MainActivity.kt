@@ -1,10 +1,12 @@
 package com.menews.app
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -21,57 +23,107 @@ import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity(), PreferencesSetupDialog.OnSetupComplete {
 
+    private val TAG = "MainActivity"
+    private var web: WebView? = null
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val web = WebView(this)
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
-        web.settings.loadWithOverviewMode = true
-        web.settings.useWideViewPort = true
-        web.addJavascriptInterface(CloudBridge(this), "MENC")
-        web.webViewClient = WebViewClient()
-        setContentView(web)
-        web.loadUrl("file:///android_asset/index.html")
-        scheduleBackgroundCheck()
-        requestNotificationPermission()
-        checkFirstLaunch()
+        
+        val webView = WebView(this)
+        web = webView
+        
+        webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
+        webView.settings.loadWithOverviewMode = true
+        webView.settings.useWideViewPort = true
+        webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+        
+        webView.addJavascriptInterface(CloudBridge(this), "MENC")
+        webView.webViewClient = object : WebViewClient() {
+            override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
+                Log.e(TAG, "WebView error: ${error.description}")
+            }
+        }
+        
+        setContentView(webView)
+        
+        // Load asset with error handling
+        try {
+            webView.loadUrl("file:///android_asset/index.html")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load asset", e)
+        }
+        
+        // Delay heavy operations to avoid crash on startup
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                scheduleBackgroundCheck()
+            } catch (e: Exception) {
+                Log.e(TAG, "WorkManager error", e)
+            }
+            requestNotificationPermission()
+            
+            // Delay dialog to ensure activity is ready
+            Handler(Looper.getMainLooper()).postDelayed({
+                checkFirstLaunch()
+            }, 500)
+        }, 100)
     }
 
     private fun checkFirstLaunch() {
-        if (!PreferencesHelper.isSetupCompleted(this)) {
-            PreferencesSetupDialog().show(supportFragmentManager, "prefs_setup")
+        try {
+            if (!PreferencesHelper.isSetupCompleted(this)) {
+                PreferencesSetupDialog().show(supportFragmentManager, "prefs_setup")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Dialog error", e)
         }
     }
 
     override fun onComplete(categories: Set<String>, sources: Set<String>) {
-        PreferencesHelper.setSelectedCategories(this, categories)
-        PreferencesHelper.setSelectedSources(this, sources)
-        PreferencesHelper.setSetupCompleted(this, true)
-        // Reschedule work with new preferences
-        scheduleBackgroundCheck()
+        try {
+            PreferencesHelper.setSelectedCategories(this, categories)
+            PreferencesHelper.setSelectedSources(this, sources)
+            PreferencesHelper.setSetupCompleted(this, true)
+            scheduleBackgroundCheck()
+        } catch (e: Exception) {
+            Log.e(TAG, "onComplete error", e)
+        }
     }
 
     private fun scheduleBackgroundCheck() {
-        val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
-        )
+        try {
+            val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "scheduleBackgroundCheck error", e)
+        }
     }
 
     private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2001
-            )
+        try {
+            if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2001
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Permission error", e)
         }
     }
 
     internal fun openPreferencesDialog() {
-        val dialog = PreferencesSetupDialog()
-        dialog.show(supportFragmentManager, "prefs_edit")
+        try {
+            val dialog = PreferencesSetupDialog()
+            dialog.show(supportFragmentManager, "prefs_edit")
+        } catch (e: Exception) {
+            Log.e(TAG, "openPreferencesDialog error", e)
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -100,22 +152,28 @@ class CloudBridge(private val activity: MainActivity) {
                 ""
             }
         } catch (e: Exception) {
+            Log.e("CloudBridge", "cloud error", e)
             ""
         }
     }
 
     @JavascriptInterface
     fun getPreferences(): String {
-        val cats = PreferencesHelper.getSelectedCategories(activity)
-        val srcs = PreferencesHelper.getSelectedSources(activity)
-        val allCats = getAvailableCategories()
-        val allSrcs = getAvailableSources()
-        return Gson().toJson(mapOf(
-            "selectedCategories" to cats,
-            "selectedSources" to srcs,
-            "allCategories" to allCats,
-            "allSources" to allSrcs
-        ))
+        try {
+            val cats = PreferencesHelper.getSelectedCategories(activity)
+            val srcs = PreferencesHelper.getSelectedSources(activity)
+            val allCats = getAvailableCategories()
+            val allSrcs = getAvailableSources()
+            return Gson().toJson(mapOf(
+                "selectedCategories" to cats,
+                "selectedSources" to srcs,
+                "allCategories" to allCats,
+                "allSources" to allSrcs
+            ))
+        } catch (e: Exception) {
+            Log.e("CloudBridge", "getPreferences error", e)
+            return "{}"
+        }
     }
 
     @JavascriptInterface
@@ -132,6 +190,7 @@ class CloudBridge(private val activity: MainActivity) {
             )
             true
         } catch (e: Exception) {
+            Log.e("CloudBridge", "savePreferences error", e)
             false
         }
     }
