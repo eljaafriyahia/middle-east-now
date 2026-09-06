@@ -7,9 +7,9 @@
     <application
         android:label="الشرق الأوسط الآن"
         android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.MENews"
         android:usesCleartextTraffic="true"
-        android:allowBackup="true"
-        android:debuggable="false">
+        android:allowBackup="true">
 
         <activity
             android:name=".MainActivity"

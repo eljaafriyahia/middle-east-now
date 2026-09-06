@@ -33,8 +33,8 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
 
-            // Parse latest articles
-            val articles = Gson().fromJson(body, Array<Article>::class.java)
+            val type = com.google.gson.reflect.TypeToken.getParameterized(Array::class.java, Article::class.java).type
+            val articles = Gson().fromJson<Array<Article>>(body, type)
             val prefs = applicationContext.getSharedPreferences("news_preferences", Context.MODE_PRIVATE)
             val lastSeen = prefs.getString("last_guid", null)
 
@@ -47,7 +47,7 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
                     )) {
                     prefs.edit().putString("last_guid", article.guid).apply()
                     if (lastSeen != null) notifyNewNews(article.title)
-                    break // Notify only once per cycle for the latest matching article
+                    break
                 }
             }
             Result.success()

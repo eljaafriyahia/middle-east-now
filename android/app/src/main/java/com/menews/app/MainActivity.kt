@@ -1,120 +1,165 @@
 package com.menews.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.util.Log
-import android.view.Gravity
 import android.view.View
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebSettings
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    private val TAG = "MainActivity"
-    private var web: WebView? = null
+    private lateinit var swipeRefresh: SwipeRefreshLayout
+    private lateinit var recyclerNews: RecyclerView
+    private lateinit var loadingView: LinearLayout
+    private lateinit var errorView: LinearLayout
+    private lateinit var errorText: TextView
+    private lateinit var btnRetry: Button
+    private lateinit var spinnerCategory: Spinner
+    private lateinit var spinnerSource: Spinner
+    private lateinit var adapter: NewsAdapter
+
+    private var allNews: List<NewsItem> = emptyList()
+    private var categories: List<String> = emptyList()
+    private var sources: List<String> = emptyList()
+    private var selectedCategory: String = "الكل"
+    private var selectedSource: String = "الكل"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "onCreate started")
-        
-        // CRITICAL FIX: Wrap ALL WebView initialization in try/catch
-        // If Android System WebView is missing/disabled/old, it throws exception that crashes app
-        try {
-            val webView = WebView(this)
-            web = webView
-            
-            webView.settings.javaScriptEnabled = true
-            webView.settings.domStorageEnabled = true
-            webView.settings.loadWithOverviewMode = true
-            webView.settings.useWideViewPort = true
-            webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            webView.settings.allowFileAccess = true
-            webView.settings.allowContentAccess = true
-            
-            webView.webViewClient = object : WebViewClient() {
-                override fun onReceivedError(view: WebView, request: android.webkit.WebResourceRequest, error: android.webkit.WebResourceError) {
-                    Log.e(TAG, "WebView error: ${error.description}")
+        setContentView(R.layout.activity_main)
+
+        swipeRefresh = findViewById(R.id.swipeRefresh)
+        recyclerNews = findViewById(R.id.recyclerNews)
+        loadingView = findViewById(R.id.loadingView)
+        errorView = findViewById(R.id.errorView)
+        errorText = findViewById(R.id.errorText)
+        btnRetry = findViewById(R.id.btnRetry)
+        spinnerCategory = findViewById(R.id.spinnerCategory)
+        spinnerSource = findViewById(R.id.spinnerSource)
+
+        recyclerNews.layoutManager = LinearLayoutManager(this)
+        adapter = NewsAdapter(emptyList()) { }
+        recyclerNews.adapter = adapter
+
+        swipeRefresh.setColorSchemeColors(0xFFF59E0B.toInt())
+        swipeRefresh.setProgressBackgroundColorSchemeColor(0xFF1E293B.toInt())
+        swipeRefresh.setOnRefreshListener { loadNews() }
+
+        btnRetry.setOnClickListener { loadNews() }
+
+        spinnerCategory.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedCategory = categories.getOrNull(position) ?: "الكل"
+                filterAndDisplay()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        spinnerSource.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedSource = sources.getOrNull(position) ?: "الكل"
+                filterAndDisplay()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        requestNotificationPermission()
+        scheduleNewsWorker()
+        loadNews()
+    }
+
+    private fun loadNews() {
+        showLoading(true)
+        Thread {
+            try {
+                val news = SupabaseService.fetchNews(80)
+                runOnUiThread {
+                    allNews = news
+                    buildFilters()
+                    filterAndDisplay()
+                    showLoading(false)
+                    swipeRefresh.isRefreshing = false
                 }
-                
-                override fun onPageFinished(view: WebView, url: String) {
-                    super.onPageFinished(view, url)
-                    Log.d(TAG, "Page finished: $url")
+            } catch (e: Exception) {
+                runOnUiThread {
+                    showError("تعذر الاتصال بالخادم.\n${e.message}")
+                    showLoading(false)
+                    swipeRefresh.isRefreshing = false
                 }
             }
-            
-            setContentView(webView)
-            Log.d(TAG, "WebView created and set as content view")
-            
-            loadAssetWithFallback(webView)
-            
-        } catch (e: Throwable) {
-            // CRITICAL: If WebView fails (missing/disabled WebView package), show error UI instead of crashing
-            Log.e(TAG, "WebView initialization FAILED - showing fallback UI", e)
-            showWebViewUnavailableError()
+        }.start()
+    }
+
+    private fun buildFilters() {
+        val cats = linkedSetOf<String>()
+        val srcs = linkedSetOf<String>()
+        for (item in allNews) {
+            item.category?.let { if (it.isNotBlank()) cats.add(it) }
+            item.source_name?.let { if (it.isNotBlank()) srcs.add(it) }
+        }
+
+        categories = listOf("الكل") + cats.toList()
+        sources = listOf("الكل") + srcs.toList()
+
+        spinnerCategory.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, categories)
+        spinnerSource.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, sources)
+    }
+
+    private fun filterAndDisplay() {
+        val filtered = allNews.filter { item ->
+            val catOk = selectedCategory == "الكل" || item.category == selectedCategory
+            val srcOk = selectedSource == "الكل" || item.source_name == selectedSource
+            catOk && srcOk
+        }
+        adapter.updateData(filtered)
+    }
+
+    private fun showLoading(loading: Boolean) {
+        loadingView.visibility = if (loading && allNews.isEmpty()) View.VISIBLE else View.GONE
+        swipeRefresh.visibility = if (!loading || allNews.isNotEmpty()) View.VISIBLE else View.GONE
+        errorView.visibility = View.GONE
+    }
+
+    private fun showError(msg: String) {
+        errorText.text = msg
+        errorView.visibility = View.VISIBLE
+        swipeRefresh.visibility = View.GONE
+        loadingView.visibility = View.GONE
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
+            }
         }
     }
 
-    private fun loadAssetWithFallback(webView: WebView) {
-        try {
-            webView.loadUrl("file:///android_asset/index.html")
-            Log.d(TAG, "loadUrl called successfully")
-        } catch (e: Exception) {
-            Log.e(TAG, "Primary loadUrl failed, showing error", e)
-            // REAL FALLBACK: Show error in WebView instead of retrying same URL
-            showErrorInWebView("تعذر تحميل ملفات التطبيق. تأكد من تثبيت APK بشكل صحيح.")
-        }
-    }
-
-    private fun showWebViewUnavailableError() {
-        // Show a proper error UI instead of crashing
-        val errorView = TextView(this).apply {
-            text = "تعذر تشغيل عارض الأخبار على هذا الجهاز.\n\n" +
-                   "السبب المحتمل: Android System WebView معطل أو غير مثبت أو قديم.\n\n" +
-                   "الحل: اذهب إلى الإعدادات → التطبيقات → Android System WebView → فعّله وحدثه من متجر Play.\n\n" +
-                   "ثم أعد تشغيل التطبيق."
-            textAlignment = View.TEXT_ALIGNMENT_CENTER
-            gravity = Gravity.CENTER
-            setPadding(48, 48, 48, 48)
-            textSize = 18f
-        }
-        setContentView(errorView)
-    }
-
-    private fun showErrorInWebView(message: String) {
-        // Try to show error in WebView as last resort
-        try {
-            web?.loadDataWithBaseURL(
-                null,
-                """
-                <!DOCTYPE html>
-                <html dir="rtl" lang="ar">
-                <head>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                        body {font-family: sans-serif; padding: 20px; text-align: center; background: #0f172a; color: #e2e8f0;}
-                        .error {background: #7f1d1d; border: 1px solid #ef4444; border-radius: 12px; padding: 20px; margin: 20px;}
-                        button {background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; margin-top: 16px;}
-                    </style>
-                </head>
-                <body>
-                    <div class="error">
-                        <h2>⚠️ خطأ في التحميل</h2>
-                        <p>$message</p>
-                        <button onclick="location.reload()">إعادة المحاولة</button>
-                    </div>
-                </body>
-                </html>
-                """.trimIndent(),
-                "text/html",
-                "utf-8",
-                null
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "showErrorInWebView failed", e)
-            showWebViewUnavailableError()
-        }
+    private fun scheduleNewsWorker() {
+        val workRequest = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "news_check",
+            ExistingPeriodicWorkPolicy.KEEP,
+            workRequest
+        )
     }
 }
