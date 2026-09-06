@@ -15,8 +15,8 @@ object PreferencesHelper {
     fun getSelectedCategories(context: Context): Set<String> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_SELECTED_CATEGORIES, "[]")
-        val type = com.google.gson.reflect.TypeToken.getParameterized(Set::class.java, String::class.java)
-        return Gson().fromJson(json, type)
+        val type = com.google.gson.reflect.TypeToken.getParameterized(Set::class.java, String::class.java).type
+        return Gson().fromJson(json, type) as Set<String>
     }
 
     fun setSelectedCategories(context: Context, categories: Set<String>) {

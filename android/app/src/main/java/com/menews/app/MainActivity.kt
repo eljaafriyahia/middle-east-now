@@ -121,12 +121,11 @@ class CloudBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun savePreferences(categoriesJson: String, sourcesJson: String): Boolean {
         return try {
-            val type = com.google.gson.reflect.TypeToken.getParameterized(Set::class.java, String::class.java)
-            val cats = Gson().fromJson(categoriesJson, type)
-            val srcs = Gson().fromJson(sourcesJson, type)
+            val type = com.google.gson.reflect.TypeToken.getParameterized(Set::class.java, String::class.java).type
+            val cats = Gson().fromJson(categoriesJson, type) as Set<String>
+            val srcs = Gson().fromJson(sourcesJson, type) as Set<String>
             PreferencesHelper.setSelectedCategories(activity, cats)
             PreferencesHelper.setSelectedSources(activity, srcs)
-            // Reschedule background check with new preferences
             val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
             WorkManager.getInstance(activity).enqueueUniquePeriodicWork(
                 "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
