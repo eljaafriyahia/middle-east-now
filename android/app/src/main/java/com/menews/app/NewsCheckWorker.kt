@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.google.gson.Gson
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -15,7 +16,7 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
         return try {
             val url = URL(
                 BASE + "/rest/v1/news" +
-                    "?select=guid&order=published.desc&limit=1"
+                    "?select=guid,title,category,source_id,source_name&order=published.desc&limit=5"
             )
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
@@ -32,13 +33,22 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
 
-            val latestGuid = Regex("\"guid\":\"(.*?)\"").find(body)?.groupValues?.get(1)
-            val prefs = applicationContext.getSharedPreferences("news_check", Context.MODE_PRIVATE)
+            // Parse latest articles
+            val articles = Gson().fromJson(body, Array<Article>::class.java)
+            val prefs = applicationContext.getSharedPreferences("news_preferences", Context.MODE_PRIVATE)
             val lastSeen = prefs.getString("last_guid", null)
 
-            if (latestGuid != null && latestGuid != lastSeen) {
-                prefs.edit().putString("last_guid", latestGuid).apply()
-                if (lastSeen != null) notifyNewNews()
+            for (article in articles) {
+                if (article.guid != lastSeen && PreferencesHelper.shouldNotifyForArticle(
+                        applicationContext,
+                        article.category,
+                        article.source_id,
+                        article.source_name
+                    )) {
+                    prefs.edit().putString("last_guid", article.guid).apply()
+                    if (lastSeen != null) notifyNewNews(article.title)
+                    break // Notify only once per cycle for the latest matching article
+                }
             }
             Result.success()
         } catch (e: Exception) {
@@ -46,7 +56,7 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
         }
     }
 
-    private fun notifyNewNews() {
+    private fun notifyNewNews(title: String) {
         val channelId = "news_updates"
         val nm = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(channelId) == null) {
@@ -56,12 +66,20 @@ class NewsCheckWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, para
         }
         val notification = NotificationCompat.Builder(applicationContext, channelId)
             .setContentTitle("الشرق الأوسط الآن")
-            .setContentText("في أخبار جديدة — افتح التطبيق للاطلاع")
+            .setContentText(title.takeIf { it.length <= 60 } ?: "${title.substring(0, 57)}...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
             .build()
         nm.notify(1001, notification)
     }
+
+    private data class Article(
+        val guid: String,
+        val title: String,
+        val category: String?,
+        val source_id: String?,
+        val source_name: String?
+    )
 
     private companion object {
         const val BASE = "https://spemfwzbgdqpuctjgkkv.supabase.co"

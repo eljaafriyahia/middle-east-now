@@ -8,15 +8,18 @@ import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
-class MainActivity : Activity() {
+class MainActivity : Activity(), PreferencesSetupDialog.OnSetupComplete {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,18 +29,33 @@ class MainActivity : Activity() {
         web.settings.domStorageEnabled = true
         web.settings.loadWithOverviewMode = true
         web.settings.useWideViewPort = true
-        web.addJavascriptInterface(CloudBridge(), "MENC")
+        web.addJavascriptInterface(CloudBridge(this), "MENC")
         web.webViewClient = WebViewClient()
         setContentView(web)
         web.loadUrl("file:///android_asset/index.html")
         scheduleBackgroundCheck()
         requestNotificationPermission()
+        checkFirstLaunch()
+    }
+
+    private fun checkFirstLaunch() {
+        if (!PreferencesHelper.isSetupCompleted(this)) {
+            PreferencesSetupDialog().show(supportFragmentManager, "prefs_setup")
+        }
+    }
+
+    override fun onComplete(categories: Set<String>, sources: Set<String>) {
+        PreferencesHelper.setSelectedCategories(this, categories)
+        PreferencesHelper.setSelectedSources(this, sources)
+        PreferencesHelper.setSetupCompleted(this, true)
+        // Reschedule work with new preferences
+        scheduleBackgroundCheck()
     }
 
     private fun scheduleBackgroundCheck() {
         val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "news_check", ExistingPeriodicWorkPolicy.KEEP, work
+            "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
         )
     }
 
@@ -51,13 +69,18 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun openPreferencesDialog() {
+        val dialog = PreferencesSetupDialog()
+        dialog.show(supportFragmentManager, "prefs_edit")
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         finish()
     }
 }
 
-class CloudBridge {
+class CloudBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun cloud(): String {
@@ -79,6 +102,60 @@ class CloudBridge {
         } catch (e: Exception) {
             ""
         }
+    }
+
+    @JavascriptInterface
+    fun getPreferences(): String {
+        val cats = PreferencesHelper.getSelectedCategories(activity)
+        val srcs = PreferencesHelper.getSelectedSources(activity)
+        val allCats = getAvailableCategories()
+        val allSrcs = getAvailableSources()
+        return Gson().toJson(mapOf(
+            "selectedCategories" to cats,
+            "selectedSources" to srcs,
+            "allCategories" to allCats,
+            "allSources" to allSrcs
+        ))
+    }
+
+    @JavascriptInterface
+    fun savePreferences(categoriesJson: String, sourcesJson: String): Boolean {
+        return try {
+            val cats = Gson().fromJson(categoriesJson, object : TypeToken<Set<String>>() {}.type)
+            val srcs = Gson().fromJson(sourcesJson, object : TypeToken<Set<String>>() {}.type)
+            PreferencesHelper.setSelectedCategories(activity, cats)
+            PreferencesHelper.setSelectedSources(activity, srcs)
+            // Reschedule background check with new preferences
+            val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
+            WorkManager.getInstance(activity).enqueueUniquePeriodicWork(
+                "news_check", ExistingPeriodicWorkPolicy.REPLACE, work
+            )
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    @JavascriptInterface
+    fun openPreferences() {
+        activity.runOnUiThread { activity.openPreferencesDialog() }
+    }
+
+    private fun getAvailableCategories(): List<String> {
+        return listOf(
+            "سياسة", "اقتصاد", "رياضة", "تقنية", "صحة", "علوم",
+            "ثقافة", "مجتمع", "عالم", "خليج", "شمال أفريقيا", "العراق", "سوريا", "اليمن", "لبنان", "فلسطين"
+        )
+    }
+
+    private fun getAvailableSources(): List<String> {
+        return listOf(
+            "BBC Arabic", "Al Jazeera", "Al Arabiya", "Sky News Arabia",
+            "RT Arabic", "CNN Arabic", "DW Arabic", "France 24 Arabic",
+            "Anadolu Agency", "Middle East Monitor", "The New Arab",
+            "Asharq Al-Awsat", "Al Quds Al Arabi", "Al Masry Al Youm",
+            "Youm7", "Sada Elbalad", "El Watan News", "Masrawy"
+        )
     }
 
     private companion object {
