@@ -275,44 +275,18 @@ const showToast = msg => {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2400);
 };
 
-const LOCAL_API = 'http://localhost:8765';
-const sleep = ms => new Promise(res => setTimeout(res, ms));
-
 const cloudOnly = async () => {
   const got = await cloudRows().then(applyRows).catch(() => false);
   showToast(got ? '✓ البيانات محدثة من السحابة' : 'تعذر الاتصال بالسحابة');
-};
-
-const pollAndWait = async () => {
-  for (let i = 0; i < 60; i++) {
-    await sleep(3000);
-    const s = await fetch(LOCAL_API + '/api/status').then(r => r.json()).catch(() => null);
-    if (!s) { await cloudOnly(); return; }
-    if (!s.busy) {
-      await cloudRows().then(applyRows).catch(() => false);
-      const n = s.last && s.last.count;
-      showToast(n ? '✓ اكتمل البحث — ' + n + ' خبر محدّث في السحابة' : 'انتهى البحث دون أخبار جديدة');
-      return;
-    }
-  }
-  showToast('البحث ما يزال جارياً في الخلفية — النتيجة ستظهر عند الاكتمال');
-  await cloudOnly();
 };
 
 const refreshFromCloud = () => {
   const btn = document.getElementById('reloadBtn');
   const prev = btn.textContent;
   btn.disabled = true;
-  btn.textContent = 'جارٍ البحث...';
+  btn.textContent = 'جارٍ التحديث...';
   const restore = () => { btn.disabled = false; btn.textContent = prev; };
-  return fetch(LOCAL_API + '/api/refresh')
-    .then(r => r.json())
-    .then(j => {
-      showToast(j && j.started ? 'بدأ البحث عن أخبار من جميع المصادر...' : 'البحث يجري بالفعل الآن...');
-      return pollAndWait();
-    })
-    .catch(() => cloudOnly())
-    .then(restore, restore);
+  return cloudOnly().then(restore, restore);
 };
 
 document.getElementById('reloadBtn').onclick = refreshFromCloud;

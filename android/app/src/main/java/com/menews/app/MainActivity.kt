@@ -2,12 +2,19 @@ package com.menews.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.app.ActivityCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
 
@@ -23,6 +30,25 @@ class MainActivity : Activity() {
         web.webViewClient = WebViewClient()
         setContentView(web)
         web.loadUrl("file:///android_asset/index.html")
+        scheduleBackgroundCheck()
+        requestNotificationPermission()
+    }
+
+    private fun scheduleBackgroundCheck() {
+        val work = PeriodicWorkRequestBuilder<NewsCheckWorker>(15, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "news_check", ExistingPeriodicWorkPolicy.KEEP, work
+        )
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2001
+            )
+        }
     }
 
     @Deprecated("Deprecated in Java")
