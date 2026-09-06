@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """تنظيف دوري للنصوص المخزنة في Supabase من الضوضاء (اقرأ أيضًا/روابط/وسوم...)."""
 import sys
+import urllib.parse
 
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -10,7 +11,7 @@ import db
 
 
 def main():
-    rows = db._req("GET", "news", params={"select": "guid,detail", "limit": 1000})
+    rows = db._req("GET", "news", params="select=guid,detail&limit=1000")
     if not isinstance(rows, list):
         print("لا يمكن الوصول إلى السحابة.")
         return
@@ -22,10 +23,11 @@ def main():
             continue
         new = clean.clean_text(detail)
         if new != detail:
-            changed.append({"guid": r["guid"], "detail": new})
+            changed.append((r["guid"], new))
 
-    for i in range(0, len(changed), 50):
-        db.upsert(changed[i:i + 50])
+    for guid, new in changed:
+        q = urllib.parse.quote(guid, safe="")
+        db._req("PATCH", "news", params="guid=eq." + q, body={"detail": new})
 
     print(f"فحص: {len(rows)}    نُظّف: {len(changed)}")
 
